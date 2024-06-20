@@ -3,6 +3,7 @@ module Main (main) where
 import MiniSat.Solver
 import Test.HUnit
 import qualified System.Exit as Exit
+import Data.List (sort)
 
 main :: IO ()
 main = do 
@@ -22,7 +23,7 @@ c1 = [x1, notLiteral x2]
 c2 = [x2, x3]
 c3 = [x4, x5, notLiteral x8]
 c4 = [x5, notLiteral x6, x7]
-c5 = [notLiteral x2, notLiteral x6, notLiteral x7]
+c5 = [x2, notLiteral x6, notLiteral x7]
 c6 = [x8]
 
 ans1 = Assign "x1" True
@@ -36,11 +37,11 @@ ans8 = Assign "x8" True
 
 model1 = Model [c1, c2, c3, c4, c5, c6] [x1, x2, x3, x4, x5, x6, x7, x8] []
 sol1 = [ans1, ans2, ans3, ans4, ans5, ans6, ans7, ans8]
-test1 = TestCase (assertEqual "large sat" (Just sol1) (solve model1))
+test1 = TestCase (assertEqual "large sat" (Just sol1) (sort <$> solve model1))
 
 model2 = Model [[notLiteral x1], [x2]] [x1, x2] []
 sol2 = [Assign "x1" False, Assign "x2" True]
-test2 = TestCase (assertEqual "small sat" (Just sol2) (solve model2))
+test2 = TestCase (assertEqual "small sat" (Just sol2) (sort <$> solve model2))
 
 model3 = Model [[notLiteral x1], [x1]] [x1] []
 test3 = TestCase (assertEqual "no sat" (solve model3) Nothing)

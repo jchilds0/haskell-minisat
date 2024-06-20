@@ -24,7 +24,7 @@ isBound literal = case literal of
 type Constr = [Literal]
 
 data Assign = Assign String Bool
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 data Model = Model [Constr] [Literal] [Assign]
     deriving Show
