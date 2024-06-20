@@ -10,10 +10,12 @@ dir = "./src/Bench/unfsat/"
 
 main :: IO ()
 main = do
-    let file1 = map (\x -> dir ++ "uf20-0" ++ show x ++ ".cnf") [1..10]
+    -- testFile "uf20-01.cnf"
+
+    let file1 = map (\x -> "uf20-0" ++ show x ++ ".cnf") [1..10]
     mapM_ testFile file1
 
-    -- let file2 = map (\x -> dir ++ "uf50-0" ++ show x ++ ".cnf") [1..10]
+    -- let file2 = map (\x -> "uf50-0" ++ show x ++ ".cnf") [1..10]
     -- mapM_ testFile file2
 
     -- let file3 = map (\x -> dir ++ "uf75-0" ++ show x ++ ".cnf") [1..10]
@@ -23,7 +25,7 @@ main = do
 
 testFile :: String -> IO ()
 testFile fileName = do
-    rows <- readFile fileName
+    rows <- readFile (dir ++ fileName)
     let ls = lines rows
     let model = dimacsToModel ls
 

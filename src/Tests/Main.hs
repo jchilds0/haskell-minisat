@@ -22,7 +22,7 @@ c1 = [x1, notLiteral x2]
 c2 = [x2, x3]
 c3 = [x4, x5, notLiteral x8]
 c4 = [x5, notLiteral x6, x7]
-c5 = [x2, notLiteral x6, notLiteral x7]
+c5 = [notLiteral x2, notLiteral x6, notLiteral x7]
 c6 = [x8]
 
 ans1 = Assign "x1" True
