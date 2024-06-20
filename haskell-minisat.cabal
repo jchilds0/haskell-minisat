@@ -71,7 +71,7 @@ library
 
     -- Other library packages from which modules are imported.
     build-depends:    
-        base ^>=4.17.2.1, 
+        base >= 4.9, 
         HUnit ^>=1.6
 
     -- Directories containing source files.
@@ -104,6 +104,6 @@ test-suite haskell-minisat-test
 
     -- Test dependencies.
     build-depends:
-        base ^>=4.17.2.1, 
+        base >= 4.9, 
         HUnit ^>=1.6,
         haskell-minisat
