@@ -34,15 +34,15 @@ ans6 = Assign "x6" True
 ans7 = Assign "x7" True
 ans8 = Assign "x8" True
 
-model1 = Model [c1, c2, c3, c4, c5, c6] [x1, x2, x3, x4, x5, x6, x7, x8]
+model1 = Model [c1, c2, c3, c4, c5, c6] [x1, x2, x3, x4, x5, x6, x7, x8] []
 sol1 = [ans1, ans2, ans3, ans4, ans5, ans6, ans7, ans8]
-test1 = TestCase (assertEqual "large sat" (solve model1) (Just sol1))
+test1 = TestCase (assertEqual "large sat" (Just sol1) (solve model1))
 
-model2 = Model [[notLiteral x1], [x2]] [x1, x2]
+model2 = Model [[notLiteral x1], [x2]] [x1, x2] []
 sol2 = [Assign "x1" False, Assign "x2" True]
-test2 = TestCase (assertEqual "small sat" (solve model2) (Just sol2))
+test2 = TestCase (assertEqual "small sat" (Just sol2) (solve model2))
 
-model3 = Model [[notLiteral x1], [x1]] [x1]
+model3 = Model [[notLiteral x1], [x1]] [x1] []
 test3 = TestCase (assertEqual "no sat" (solve model3) Nothing)
 
 tests = TestList [TestLabel "test1" test1, TestLabel "test2" test2, TestLabel "test3" test3]

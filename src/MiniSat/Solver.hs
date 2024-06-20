@@ -1,5 +1,4 @@
-module MiniSat.Solver where 
-import Data.List (nub)
+module MiniSat.Solver (Model(..), Assign(..), Literal(..), Constr, solve, newVar, notLiteral) where 
 
 type LBool = Maybe Bool
 type Not = Bool
@@ -12,38 +11,56 @@ notLiteral (Literal name nt lbool) = Literal name (not nt) lbool
 setLiteral :: Literal -> Bool -> Literal
 setLiteral (Literal name nt _) b = Literal name nt (Just b)
 
+value :: Literal -> Bool
+value (Literal _ _ Nothing) = False
+value (Literal _ False (Just var)) = var
+value (Literal _ True (Just var)) = not var
+
 type Constr = [Literal]
 
 data Assign = Assign String Bool
     deriving (Eq, Show)
 
-data Model = Model [Constr] [Literal]
+data Model = Model [Constr] [Literal] [Assign]
     deriving Show
 
 newVar :: String -> Not -> Literal
 newVar str nt = Literal str nt Nothing
 
+type SAT = Bool
+
 solve :: Model -> Maybe [Assign]
-solve m1 = if sat then Just (solAssign m2) else Nothing
+solve model = if sat then Just assigns else Nothing
     where 
-        (m2, sat) = solverVar m1
+        (result, sat) = solveVar model
+        Model _ _ assigns = result
 
-solverVar :: Model -> (Model, Bool)
-solverVar m@(Model cs lits) = case lits of 
-    (literal:ls) -> if sat1 then (Model sol1 (lTrue:ls1), sat1) else (Model sol2 (lFalse:ls2), sat2)
+solveVar :: Model -> (Model, SAT)
+solveVar (Model cs ls as) = case ls of 
+    (literal:lits) -> if sat1 then (modelTrue, sat1) else (modelFalse, sat2)
         where 
+            newModel = Model cs lits as
+
             lTrue = setLiteral literal True
-            Model cs1 _ = propagateLiteral m lTrue 
-            (Model sol1 ls1, sat1) = solverVar (Model cs1 ls)
+            (modelTrue, sat1) = assignLiteral newModel lTrue
 
-            lFalse = setLiteral literal False 
-            Model cs2 _ = propagateLiteral m lFalse
-            (Model sol2 ls2, sat2) = solverVar (Model cs2 ls)
+            lFalse= setLiteral literal False
+            (modelFalse, sat2) = assignLiteral newModel lFalse 
 
-    [] -> (Model cs lits, modelSat cs)
+    [] -> (Model cs ls as, modelSat cs)
+
+assignLiteral :: Model -> Literal -> (Model, SAT)
+assignLiteral model literal = (newModel, sat)
+    where 
+        Literal name _ _ = literal
+        a = Assign name (value literal)
+
+        propModel = propagateLiteral model literal
+        (Model constrs1 lits1 as, sat) = solveVar propModel
+        newModel = Model constrs1 lits1 (a:as) 
 
 propagateLiteral :: Model -> Literal -> Model
-propagateLiteral (Model cs ls) newLit = Model newConstrs ls
+propagateLiteral (Model cs ls as) newLit = Model newConstrs ls as
     where 
         newConstrs = map (map (replaceLiteral newLit)) cs
 
@@ -53,27 +70,16 @@ replaceLiteral l1 l2 = if name1 == name2 then Literal name1 nt var else l2
         Literal name1 _ var = l1 
         Literal name2 nt _ = l2 
 
-literalToAssign :: Literal -> Assign
-literalToAssign (Literal name _ (Just var)) = Assign name var
-
-solAssign :: Model -> [Assign]
-solAssign (Model _ ls) = nub (map literalToAssign ls)
-
 isBound :: Literal -> Bool
 isBound literal = case literal of 
     Literal _ _ (Just _) -> True
     Literal _ _ Nothing  -> False
 
-orLiteral :: Literal -> Bool -> Bool
-orLiteral (Literal _ _ Nothing) b = b
-orLiteral (Literal _ False (Just x)) b = x || b
-orLiteral (Literal _ True (Just x)) b = not x || b
-
 constrSat :: Constr -> Bool
 constrSat cs = bound && sat
     where 
         bound = all isBound cs
-        sat = foldr orLiteral False cs
+        sat = foldr (\x y -> y || value x) False cs
 
 modelSat :: [Constr] -> Bool
 modelSat = all constrSat

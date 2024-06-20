@@ -20,7 +20,7 @@ name:               haskell-minisat
 -- PVP summary:     +-+------- breaking API changes
 --                  | | +----- non-breaking API additions
 --                  | | | +--- code changes with no API change
-version:            0.1.0.0
+version:            0.2.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -61,10 +61,10 @@ library
     -- Modules exported by the library.
     exposed-modules:  
         MiniSat.Solver
+        MiniSat.Parser
 
     -- Modules included in this library but not exported.
     other-modules: 
-        MiniSat.Dev
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -72,7 +72,6 @@ library
     -- Other library packages from which modules are imported.
     build-depends:    
         base >= 4.9, 
-        HUnit ^>=1.6
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -106,4 +105,18 @@ test-suite haskell-minisat-test
     build-depends:
         base >= 4.9, 
         HUnit ^>=1.6,
+        haskell-minisat
+
+Benchmark haskell-minisat-bench
+    default-language: Haskell2010
+
+    type:             exitcode-stdio-1.0
+
+    hs-source-dirs:   src/Bench
+
+    main-is:          Main.hs
+
+    build-depends:
+        base >= 4.9, 
+        time,
         haskell-minisat
