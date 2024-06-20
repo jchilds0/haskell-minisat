@@ -15,8 +15,8 @@ main = do
     let file1 = map (\x -> "uf20-0" ++ show x ++ ".cnf") [1..10]
     mapM_ testFile file1
 
-    -- let file2 = map (\x -> "uf50-0" ++ show x ++ ".cnf") [1..10]
-    -- mapM_ testFile file2
+    let file2 = map (\x -> "uf50-0" ++ show x ++ ".cnf") [1..10]
+    mapM_ testFile file2
 
     -- let file3 = map (\x -> dir ++ "uf75-0" ++ show x ++ ".cnf") [1..10]
     -- mapM_ testFile file3

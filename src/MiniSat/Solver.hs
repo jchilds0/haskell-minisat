@@ -1,5 +1,4 @@
 module MiniSat.Solver (Model(..), Assign(..), Literal(..), Constr, solve, newVar, notLiteral) where
-import Debug.Trace (trace, traceShow)
 
 type LBool = Maybe Bool
 type Not = Bool
@@ -11,9 +10,6 @@ instance Eq Literal where
 
 notLiteral :: Literal -> Literal
 notLiteral (Literal name nt lbool) = Literal name (not nt) lbool
-
-setLiteral :: Literal -> Bool -> Literal
-setLiteral (Literal name nt _) b = Literal name nt (Just b)
 
 value :: Literal -> Bool
 value (Literal _ _ Nothing) = False
@@ -62,18 +58,18 @@ solveVar (Model cs ls as) = case ls of
 assignLiteral :: Model -> Assign -> (Model, SAT)
 assignLiteral model assign
   | conflict1 = (newModel, False)
-  -- | conflict2 = (propModel, False)
+  | conflict2 = (propModel, False)
   | otherwise = (solveModel, sat)
   where
       newModel = updateLiteral model assign
       (Model cs1 _ _) = newModel
       conflict1 = any constrConflict cs1
 
-      -- propModel = propagateLiteral newModel
-      -- (Model cs2 _ _) = propModel
-      -- conflict2 = any constrConflict cs2
+      propModel = propagateLiteral newModel
+      (Model cs2 _ _) = propModel
+      conflict2 = any constrConflict cs2
 
-      (solveModel, sat) = solveVar newModel
+      (solveModel, sat) = solveVar propModel
 
 constrConflict :: Constr -> Bool
 constrConflict cs = all isBound cs && not (constrSat cs)
@@ -98,7 +94,7 @@ countUnBound :: Literal -> Int -> Int
 countUnBound lit count = if isBound lit then count else count + 1
 
 unitConstr :: Constr -> Bool
-unitConstr constr = numUnBound == 1
+unitConstr constr = numUnBound == 1 && not (any value constr)
     where
         numUnBound = foldr countUnBound 0 constr
 
