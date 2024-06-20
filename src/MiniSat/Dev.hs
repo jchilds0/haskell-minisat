@@ -1,4 +1,6 @@
-import Solver
+module MiniSat.Dev where 
+
+import MiniSat.Solver
 import Test.HUnit
 
 x1 = newVar "x1" False

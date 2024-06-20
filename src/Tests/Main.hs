@@ -1,5 +1,13 @@
-import Solver
+module Main (main) where
+
+import MiniSat.Solver
 import Test.HUnit
+import qualified System.Exit as Exit
+
+main :: IO ()
+main = do 
+    result <- runTestTT tests
+    if failures result > 0 then Exit.exitFailure else Exit.exitSuccess
 
 x1 = newVar "x1" False
 x2 = newVar "x2" False

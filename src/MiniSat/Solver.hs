@@ -1,4 +1,4 @@
-module Solver where 
+module MiniSat.Solver where 
 import Data.List (nub)
 
 type LBool = Maybe Bool
