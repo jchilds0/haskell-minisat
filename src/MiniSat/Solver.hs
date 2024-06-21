@@ -1,40 +1,53 @@
-module MiniSat.Solver (Model(..), Assign(..), Literal(..), Constr, solve, newVar, notLiteral) where
+module MiniSat.Solver (Model(..), Literal(..), Variable(..), Constr, Sign(..), solve, notVariable) where
 
-type LBool = Maybe Bool
-type Not = Bool
-data Literal a = Literal a Not LBool
+data Sign = None | Not
     deriving Show
 
-instance Eq a => Eq (Literal a) where
-    Literal name1 _ _ == Literal name2 _ _ = name1 == name2
+flipSign :: Sign -> Sign
+flipSign None = Not
+flipSign Not = None
 
-notLiteral :: Literal a -> Literal a
-notLiteral (Literal name nt lbool) = Literal name (not nt) lbool
+applySign :: Bool -> Sign -> Bool
+applySign val None = val
+applySign val Not = not val
 
-value :: Literal a -> Bool
-value (Literal _ _ Nothing) = False
-value (Literal _ False (Just var)) = var
-value (Literal _ True (Just var)) = not var
+data Variable a = Bound a Sign Bool | Unbound a Sign
+    deriving Show
 
-isBound :: Literal a -> Bool
-isBound literal = case literal of
-    Literal _ _ (Just _) -> True
-    Literal _ _ Nothing  -> False
+variableName :: Variable a -> a
+variableName (Bound name _ _) = name
+variableName (Unbound name _) = name
 
-type Constr a = [Literal a]
+variableSign :: Variable a -> Sign
+variableSign (Bound _ sign _) = sign
+variableSign (Unbound _ sign) = sign
 
-data Assign a = Assign a Bool
+variableValue :: Variable a -> Bool
+variableValue (Bound _ sign val) = applySign val sign
+variableValue (Unbound _ _) = False
+
+instance Eq a => Eq (Variable a) where
+    var1 == var2 = variableName var1 == variableName var2
+
+notVariable :: Variable a -> Variable a
+notVariable (Bound name sign bool) = Bound name (flipSign sign) bool
+notVariable (Unbound name sign) = Unbound name (flipSign sign) 
+
+isBound :: Variable a -> Bool
+isBound (Bound _ _ _) = True
+isBound (Unbound _ _) = False
+
+type Constr a = [Variable a]
+
+data Literal a = Literal a Bool
     deriving (Eq, Show, Ord)
 
-data Model a = Model [Constr a] [Literal a] [Assign a]
+data Model a = Model [Constr a] [Variable a] [Literal a]
     deriving Show
-
-newVar :: a -> Not -> Literal a
-newVar str nt = Literal str nt Nothing
 
 type SAT = Bool
 
-solve :: Eq a => Model a -> Maybe [Assign a]
+solve :: Eq a => Model a -> Maybe [Literal a]
 solve model = if sat then Just assigns else Nothing
     where
         (result, sat) = solveVar model
@@ -42,30 +55,30 @@ solve model = if sat then Just assigns else Nothing
 
 solveVar :: Eq a => Model a -> (Model a, SAT)
 solveVar (Model cs ls as) = case ls of
-    (literal:_) -> if sat1 then (modelTrue, sat1) else (modelFalse, sat2)
+    (var:_) -> if sat1 then (modelTrue, sat1) else (modelFalse, sat2)
         where
             model = Model cs ls as
-            (Literal name _ _) = literal
+            name = variableName var
 
-            lTrue = Assign name True
-            (modelTrue, sat1) = assignLiteral model lTrue
+            lTrue = Literal name True
+            (modelTrue, sat1) = assignVariable model lTrue
 
-            lFalse = Assign name False
-            (modelFalse, sat2) = assignLiteral model lFalse
+            lFalse = Literal name False
+            (modelFalse, sat2) = assignVariable model lFalse
 
     [] -> (Model cs ls as, modelSat cs)
 
-assignLiteral :: Eq a => Model a -> Assign a -> (Model a, SAT)
-assignLiteral model assign
+assignVariable :: Eq a => Model a -> Literal a -> (Model a, SAT)
+assignVariable model assign
   | conflict1 = (newModel, False)
   | conflict2 = (propModel, False)
   | otherwise = (solveModel, sat)
   where
-      newModel = updateLiteral model assign
+      newModel = updateVariable model assign
       (Model cs1 _ _) = newModel
       conflict1 = any constrConflict cs1
 
-      propModel = propagateLiteral newModel
+      propModel = propagateVariable newModel
       (Model cs2 _ _) = propModel
       conflict2 = any constrConflict cs2
 
@@ -74,50 +87,55 @@ assignLiteral model assign
 constrConflict :: Constr a -> Bool
 constrConflict cs = all isBound cs && not (constrSat cs)
 
-propagateLiteral :: Eq a => Model a -> Model a
-propagateLiteral model = if null unit then model else propagateLiteral newModel
+propagateVariable :: Eq a => Model a -> Model a
+propagateVariable model = if null unit then model else propagateVariable newModel
     where
         (Model cs _ _) = model
         unit = filter unitConstr cs
 
-        (Literal name nt _) = unBoundLiteral (head unit)
-        assign = Assign name (not nt)
-        newModel = updateLiteral model assign
+        var = unBoundVariable (head unit)
+        sign = variableSign var
+        assign = Literal (variableName var) (applySign True sign)
+        newModel = updateVariable model assign
 
-unBoundLiteral :: Constr a -> Literal a
-unBoundLiteral = head . filter (not . isBound)
+unBoundVariable :: Constr a -> Variable a
+unBoundVariable = head . filter (not . isBound)
 
-countUnBound :: Literal a -> Int -> Int
+countUnBound :: Variable a -> Int -> Int
 countUnBound lit count = if isBound lit then count else count + 1
 
 unitConstr :: Constr a -> Bool
-unitConstr constr = numUnBound == 1 && not (any value constr)
+unitConstr constr = numUnBound == 1 && not (any variableValue constr)
     where
         numUnBound = foldr countUnBound 0 constr
 
-updateLiteral :: Eq a => Model a -> Assign a -> Model a
-updateLiteral (Model cs ls as) assign = Model newConstrs newLiterals newAssigns
+updateVariable :: Eq a => Model a -> Literal a -> Model a
+updateVariable (Model cs ls as) assign = Model newConstrs newVariables newLiterals
     where
-        newConstrs = map (map (replaceLiteral assign)) cs
-        newLiterals = filter (not . sameLiteral assign) ls
-        newAssigns = assign:as
+        newConstrs = map (map (replaceVariable assign)) cs
+        newVariables = filter (not . sameVariable assign) ls
+        newLiterals = assign:as
 
-sameLiteral :: Eq a => Assign a -> Literal a -> Bool
-sameLiteral (Assign name1 _) (Literal name2 _ _) = name1 == name2
+replaceVariable :: Eq a => Literal a -> Variable a -> Variable a
+replaceVariable literal var 
+    | sameVariable literal var = Bound name sign val
+    | otherwise = var
+    where 
+        (Literal name val) = literal
+        sign = variableSign var
 
-replaceLiteral :: Eq a => Assign a -> Literal a -> Literal a
-replaceLiteral assign literal
-    | sameLiteral assign literal = Literal name nt (Just var) 
-    | otherwise = literal
-    where
-        Assign _ var = assign
-        Literal name nt _ = literal
+sameVariable :: Eq a => Literal a -> Variable a -> Bool
+sameVariable (Literal name _) var = name == variableName var
 
 constrSat :: Constr a -> Bool
 constrSat cs = bound && sat
     where
         bound = all isBound cs 
-        sat = foldr (\x y -> y || value x) False cs
+        sat = foldr constrPartialSat False cs
+
+constrPartialSat :: Variable a -> Bool -> Bool
+constrPartialSat (Bound _ sign val) b = applySign val sign || b
+constrPartialSat (Unbound _ _) b = b
 
 modelSat :: [Constr a] -> Bool
 modelSat = all constrSat
