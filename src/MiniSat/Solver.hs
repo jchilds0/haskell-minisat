@@ -2,45 +2,45 @@ module MiniSat.Solver (Model(..), Assign(..), Literal(..), Constr, solve, newVar
 
 type LBool = Maybe Bool
 type Not = Bool
-data Literal = Literal String Not LBool
+data Literal a = Literal a Not LBool
     deriving Show
 
-instance Eq Literal where
+instance Eq a => Eq (Literal a) where
     Literal name1 _ _ == Literal name2 _ _ = name1 == name2
 
-notLiteral :: Literal -> Literal
+notLiteral :: Literal a -> Literal a
 notLiteral (Literal name nt lbool) = Literal name (not nt) lbool
 
-value :: Literal -> Bool
+value :: Literal a -> Bool
 value (Literal _ _ Nothing) = False
 value (Literal _ False (Just var)) = var
 value (Literal _ True (Just var)) = not var
 
-isBound :: Literal -> Bool
+isBound :: Literal a -> Bool
 isBound literal = case literal of
     Literal _ _ (Just _) -> True
     Literal _ _ Nothing  -> False
 
-type Constr = [Literal]
+type Constr a = [Literal a]
 
-data Assign = Assign String Bool
+data Assign a = Assign a Bool
     deriving (Eq, Show, Ord)
 
-data Model = Model [Constr] [Literal] [Assign]
+data Model a = Model [Constr a] [Literal a] [Assign a]
     deriving Show
 
-newVar :: String -> Not -> Literal
+newVar :: a -> Not -> Literal a
 newVar str nt = Literal str nt Nothing
 
 type SAT = Bool
 
-solve :: Model -> Maybe [Assign]
+solve :: Eq a => Model a -> Maybe [Assign a]
 solve model = if sat then Just assigns else Nothing
     where
         (result, sat) = solveVar model
         Model _ _ assigns = result
 
-solveVar :: Model -> (Model, SAT)
+solveVar :: Eq a => Model a -> (Model a, SAT)
 solveVar (Model cs ls as) = case ls of
     (literal:_) -> if sat1 then (modelTrue, sat1) else (modelFalse, sat2)
         where
@@ -55,7 +55,7 @@ solveVar (Model cs ls as) = case ls of
 
     [] -> (Model cs ls as, modelSat cs)
 
-assignLiteral :: Model -> Assign -> (Model, SAT)
+assignLiteral :: Eq a => Model a -> Assign a -> (Model a, SAT)
 assignLiteral model assign
   | conflict1 = (newModel, False)
   | conflict2 = (propModel, False)
@@ -71,44 +71,41 @@ assignLiteral model assign
 
       (solveModel, sat) = solveVar propModel
 
-constrConflict :: Constr -> Bool
+constrConflict :: Constr a -> Bool
 constrConflict cs = all isBound cs && not (constrSat cs)
 
-propagateLiteral :: Model -> Model
-propagateLiteral model = if null unit then model else propagateConstr model (head unit)
+propagateLiteral :: Eq a => Model a -> Model a
+propagateLiteral model = if null unit then model else propagateLiteral newModel
     where
         (Model cs _ _) = model
         unit = filter unitConstr cs
 
-propagateConstr :: Model -> Constr -> Model
-propagateConstr model constr = newModel
-    where
-        (Literal name nt _) = unBoundLiteral constr
+        (Literal name nt _) = unBoundLiteral (head unit)
         assign = Assign name (not nt)
         newModel = updateLiteral model assign
 
-unBoundLiteral :: Constr -> Literal
+unBoundLiteral :: Constr a -> Literal a
 unBoundLiteral = head . filter (not . isBound)
 
-countUnBound :: Literal -> Int -> Int
+countUnBound :: Literal a -> Int -> Int
 countUnBound lit count = if isBound lit then count else count + 1
 
-unitConstr :: Constr -> Bool
+unitConstr :: Constr a -> Bool
 unitConstr constr = numUnBound == 1 && not (any value constr)
     where
         numUnBound = foldr countUnBound 0 constr
 
-updateLiteral :: Model -> Assign -> Model
+updateLiteral :: Eq a => Model a -> Assign a -> Model a
 updateLiteral (Model cs ls as) assign = Model newConstrs newLiterals newAssigns
     where
         newConstrs = map (map (replaceLiteral assign)) cs
         newLiterals = filter (not . sameLiteral assign) ls
         newAssigns = assign:as
 
-sameLiteral :: Assign -> Literal -> Bool
+sameLiteral :: Eq a => Assign a -> Literal a -> Bool
 sameLiteral (Assign name1 _) (Literal name2 _ _) = name1 == name2
 
-replaceLiteral :: Assign -> Literal -> Literal
+replaceLiteral :: Eq a => Assign a -> Literal a -> Literal a
 replaceLiteral assign literal
     | sameLiteral assign literal = Literal name nt (Just var) 
     | otherwise = literal
@@ -116,11 +113,11 @@ replaceLiteral assign literal
         Assign _ var = assign
         Literal name nt _ = literal
 
-constrSat :: Constr -> Bool
+constrSat :: Constr a -> Bool
 constrSat cs = bound && sat
     where
         bound = all isBound cs 
         sat = foldr (\x y -> y || value x) False cs
 
-modelSat :: [Constr] -> Bool
+modelSat :: [Constr a] -> Bool
 modelSat = all constrSat

@@ -14,13 +14,13 @@ lineType line
     where 
         w = words line
 
-stringToClause :: Int -> Literal
+stringToClause :: Int -> Literal Int
 stringToClause var 
-    | var < 0 = Literal (show (abs var)) True Nothing 
-    | var > 0 = Literal (show var) False Nothing 
+    | var < 0 = Literal (abs var) True Nothing 
+    | var > 0 = Literal var False Nothing 
     | otherwise = error $ "var " ++ show var ++ " is invalid"
 
-dimacsToModel :: [String] -> Model
+dimacsToModel :: [String] -> Model Int
 dimacsToModel [] = Model [] [] []
 dimacsToModel (line:lines') = case lineType line of
     Constraint -> Model (clause:cs) ls []
@@ -33,5 +33,5 @@ dimacsToModel (line:lines') = case lineType line of
         vars = filter (/= 0)  (map read ws)
         ws = words line
 
-        lits = map (\n -> Literal (show n) False Nothing) [1..varCount]
+        lits = map (\n -> Literal n False Nothing) [1..varCount]
         varCount = read (words line !! 2) :: Int
