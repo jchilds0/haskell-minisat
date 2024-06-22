@@ -1,4 +1,4 @@
-module MiniSat.Solver (Model(..), Variable(..), Sign(..), solve, notVariable, newModel) where
+module MiniSat.Solver (Model(..), Literal(..), Variable(..), Sign(..), solve, notVariable, newModel) where
 
 data Sign = None | Not
     deriving Show
