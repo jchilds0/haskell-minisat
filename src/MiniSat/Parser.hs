@@ -16,8 +16,8 @@ lineType line
 
 stringToClause :: Int -> Variable Int
 stringToClause var 
-    | var < 0 = Unbound (abs var) Not
-    | var > 0 = Unbound var None
+    | var < 0 = Variable (abs var) Not
+    | var > 0 = Variable var None
     | otherwise = error $ "var " ++ show var ++ " is invalid"
 
 dimacsToModel :: [String] -> Model Int
@@ -33,5 +33,5 @@ dimacsToModel (line:lines') = case lineType line of
         vars = filter (/= 0)  (map read ws)
         ws = words line
 
-        lits = map (\n -> Unbound n None) [1..varCount]
+        lits = map (\n -> Variable n None) [1..varCount]
         varCount = read (words line !! 2) :: Int

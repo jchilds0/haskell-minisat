@@ -10,14 +10,14 @@ main = do
     result <- runTestTT tests
     if failures result > 0 then Exit.exitFailure else Exit.exitSuccess
 
-x1 = Unbound "x1" None 
-x2 = Unbound "x2" None 
-x3 = Unbound "x3" None 
-x4 = Unbound "x4" None 
-x5 = Unbound "x5" None 
-x6 = Unbound "x6" None 
-x7 = Unbound "x7" None 
-x8 = Unbound "x8" None 
+x1 = Variable "x1" None 
+x2 = Variable "x2" None 
+x3 = Variable "x3" None 
+x4 = Variable "x4" None 
+x5 = Variable "x5" None 
+x6 = Variable "x6" None 
+x7 = Variable "x7" None 
+x8 = Variable "x8" None 
 
 c1 = [x1, notVariable x2]
 c2 = [x2, x3]
@@ -44,6 +44,6 @@ sol2 = [Literal "x1" False, Literal "x2" True]
 test2 = TestCase (assertEqual "small sat" (Just sol2) (sort <$> solve model2))
 
 model3 = Model [[notVariable x1], [x1]] [x1] []
-test3 = TestCase (assertEqual "no sat" (solve model3) Nothing)
+test3 = TestCase (assertEqual "no sat" Nothing (solve model3))
 
 tests = TestList [TestLabel "test1" test1, TestLabel "test2" test2, TestLabel "test3" test3]
