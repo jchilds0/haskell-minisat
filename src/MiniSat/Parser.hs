@@ -20,16 +20,20 @@ stringToClause var
     | var > 0 = Variable var None
     | otherwise = error $ "var " ++ show var ++ " is invalid"
 
-dimacsToModel :: [String] -> Model Int
-dimacsToModel [] = Model [] [] []
-dimacsToModel (line:lines') = case lineType line of
-    Constraint -> Model (clause:cs) ls []
-    Problem -> Model cs lits []
-    _ -> model
+dimacsToModel :: [String] -> Model Int 
+dimacsToModel ls = newModel constrs vars
     where 
-        model = dimacsToModel lines'
-        Model cs ls _ = model
-        clause = map stringToClause vars
+        (constrs, vars) = stringToClauses ls
+
+stringToClauses :: [String] -> ([[Variable Int]], [Variable Int])
+stringToClauses [] = ([], [])
+stringToClauses (line:lines') = case lineType line of
+    Constraint -> (constr:cs, ls) 
+    Problem -> (cs, lits)
+    _ -> (cs, ls)
+    where 
+        (cs, ls) = stringToClauses lines'
+        constr = map stringToClause vars
         vars = filter (/= 0)  (map read ws)
         ws = words line
 
