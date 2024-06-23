@@ -28,9 +28,9 @@ main = do
     let file3 = map (\x -> "uf100-0" ++ show x ++ ".cnf") [1..10]
     mapM_ testFile file3
 
-    putStrLn "--- 150 Variables ---"
-    let file3 = map (\x -> "uf150-0" ++ show x ++ ".cnf") [1..10]
-    mapM_ testFile file3
+    -- putStrLn "--- 150 Variables ---"
+    -- let file3 = map (\x -> "uf150-0" ++ show x ++ ".cnf") [1..10]
+    -- mapM_ testFile file3
 
 
 testFile :: String -> IO ()

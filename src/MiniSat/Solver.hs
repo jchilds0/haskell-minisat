@@ -1,4 +1,5 @@
 module MiniSat.Solver (Model(..), Literal(..), Variable(..), Sign(..), solve, notVariable, newModel) where
+import Data.List (nub)
 
 data Sign = None | Not
     deriving Show
@@ -36,6 +37,12 @@ unsatLiteral lit (Constr vars _) = not (or literals)
         nameVars = filter (eqVariableName name) vars
         literals = map (variableSat lit) nameVars
 
+inConstr :: Eq a => a -> Constr a -> Bool
+inConstr name (Constr vars _) = name `elem` names
+    where 
+        names = map (\(Variable n _) -> n) vars
+
+
 data Literal a = Literal a Bool
     deriving (Eq, Show, Ord)
 
@@ -55,33 +62,19 @@ data AssignNode a = Node (Literal a) [AssignNode a]
 newtype AssignTree a = Tree [AssignNode a]
     deriving Show
 
-eqLiteralAssignNode :: Eq a => Literal a -> AssignNode a -> Bool
-eqLiteralAssignNode (Literal n1 _) (Node (Literal n2 _) _) = n1 == n2
-
-addLiteral :: Eq a => AssignTree a -> Literal a -> AssignTree a
-addLiteral (Tree ts) lit 
-    | null names = Tree (newNode:ts)
-    | otherwise = Tree ts
-    where 
-        names = filter (eqLiteralAssignNode lit) ts
-        newNode = Node lit []
-
-addImplication :: Eq a => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
-addImplication (Tree ts) lit impl = Tree (newNode:ts)
+addLiteral :: Eq a => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
+addLiteral (Tree ts) lit impl = Tree (newNode:ts)
     where 
         implNodes = filter (\(Node t _) -> t `elem` impl) ts
         newNode = Node lit implNodes
 
-nodeLeaves :: Eq a => AssignNode a -> [Literal a]
-nodeLeaves (Node lit []) = [lit]
-nodeLeaves (Node _ cs) = concatMap nodeLeaves cs
-
-literalLeaves :: Eq a => AssignTree a -> Literal a -> [Literal a]
-literalLeaves (Tree ts) (Literal name _) 
-    | null child = []
-    | otherwise = nodeLeaves (head child)
+literalConflict :: Eq a => AssignTree a -> Literal a -> [Literal a]
+literalConflict (Tree ts) (Literal name _) 
+    | null literalNodes = []
+    | otherwise = nub literals
     where 
-        child = filter (\(Node (Literal n _) _) -> name == n) ts
+        literalNodes = filter (\(Node (Literal n _) _) -> name == n) ts
+        literals = map (\(Node l _) -> l) literalNodes
 
 
 data Model a = Model [Constr a] [Variable a] [Literal a] (AssignTree a)
@@ -96,37 +89,39 @@ newModel clauses vars = model
 data Status a = Valid (Model a) | Conflict (Constr a)
 
 solve :: Eq a => Model a -> Maybe [Literal a]
-solve model = case solveVar model of 
-    Valid solveModel -> Just assigns
+solve model = case solveModel model of 
+    Valid result -> Just assigns
         where
-            Model _ _ assigns _ = solveModel
+            Model _ _ assigns _ = result
 
     Conflict _ -> Nothing
 
-solveVar :: Eq a => Model a -> Status a
-solveVar model@(Model _ [] _ _) = Valid model
-solveVar model@(Model _ (var:_) _ _) = case modelTrue of
+solveModel :: Eq a => Model a -> Status a
+solveModel model@(Model _ [] _ _) = Valid model
+solveModel model@(Model _ (var:_) _ _) = case modelTrue of
     Valid _ -> modelTrue
-    Conflict _ -> modelFalse
+    Conflict conflict -> conflictModel model var conflict
     where
         (Variable name _) = var
 
         lTrue = Literal name True
         modelTrue = assignVariable model lTrue
 
+conflictModel :: Eq a => Model a -> Variable a -> Constr a -> Status a
+conflictModel (Model cs ls as tree) (Variable name _) conflict = if inConstr name conflict then modelFalse else Conflict conflict
+    where 
         lFalse = Literal name False
-        modelFalse = assignVariable model lFalse
+        updateModel = Model (conflict:cs) ls as tree
+        modelFalse = assignVariable updateModel lFalse
 
 assignVariable :: Eq a => Model a -> Literal a -> Status a
-assignVariable model assign = maybe solveModel Conflict maybeConflict
+assignVariable model assign = maybe result Conflict maybeConflict
     where
-        declModel = decisionLiteral model assign
-        updateModel = updateVariable declModel assign
-
+        updateModel = updateVariable model assign []
         propModel = propagateUnitConstr updateModel
         maybeConflict = constrConflict propModel
 
-        solveModel = solveVar propModel
+        result = solveModel propModel
 
 constrConflict :: Eq a => Model a -> Maybe (Constr a)
 constrConflict (Model constrs _ _ tree) 
@@ -135,8 +130,8 @@ constrConflict (Model constrs _ _ tree)
     where 
         vars = filter (\(Constr var _) -> null var) constrs
         Constr _ lits = head vars
-        declLits = concatMap (literalLeaves tree) lits
-        declVars = map (\(Literal name val) -> variableTrue name val) declLits
+        declLits = concatMap (literalConflict tree) lits
+        declVars = map (\(Literal name val) -> variableTrue name val) declLits 
         conflict = Constr declVars []
 
 propagateUnitConstr :: Eq a => Model a -> Model a
@@ -151,28 +146,20 @@ propagateUnitConstr model
         (Variable name sign) = head constr
         assign = literalTrue name sign
 
-        implModel = impliedLiteral model assign impl
-        updateModel = updateVariable implModel assign
+        updateModel = updateVariable model assign impl
 
 unitConstr :: Constr a -> Bool
 unitConstr (Constr vars _) = length vars == 1
 
-decisionLiteral :: Eq a => Model a -> Literal a -> Model a
-decisionLiteral (Model cs ls as tree) literal = Model cs ls as newTree
-    where 
-        newTree = addLiteral tree literal
-
-impliedLiteral :: Eq a => Model a -> Literal a -> [Literal a] -> Model a 
-impliedLiteral (Model cs ls as tree) literal impl = Model cs ls as newTree
-    where 
-        newTree = addImplication tree literal impl
-
-updateVariable :: Eq a => Model a -> Literal a -> Model a
-updateVariable (Model cs ls as tree) literal = Model newConstrs newVariables newLiterals tree
+updateVariable :: Eq a => Model a -> Literal a -> [Literal a] -> Model a
+updateVariable (Model vars literals assigns tree) literal impl = updateModel
     where
         Literal name _ = literal
-        unsatConstrs = filter (unsatLiteral literal) cs
-        newConstrs = map (setLiteral literal) unsatConstrs        
-        newVariables = filter (not . eqVariableName name) ls
-        newLiterals = literal:as
+        unsatConstrs = filter (unsatLiteral literal) vars
+        newVars = map (setLiteral literal) unsatConstrs        
+        newLiterals = filter (not . eqVariableName name) literals
+        newAssigns = literal:assigns
+        newTree = addLiteral tree literal impl
+
+        updateModel = Model newVars newLiterals newAssigns newTree
 
