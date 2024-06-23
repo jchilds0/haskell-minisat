@@ -51,10 +51,8 @@ literalTrue name None = Literal name True
 literalTrue name Not = Literal name False 
 
 variableSat :: Literal a -> Variable a -> Bool
-variableSat (Literal _ True) (Variable _ None) = True
-variableSat (Literal _ False) (Variable _ None) = False
-variableSat (Literal _ True) (Variable _ Not) = False
-variableSat (Literal _ False) (Variable _ Not) = True
+variableSat (Literal _ val) (Variable _ None) = val
+variableSat (Literal _ val) (Variable _ Not) = not val
 
 data AssignNode a = Node (Literal a) [AssignNode a]
     deriving Show
@@ -90,10 +88,7 @@ data Status a = Valid (Model a) | Conflict (Constr a)
 
 solve :: Eq a => Model a -> Maybe [Literal a]
 solve model = case solveModel model of 
-    Valid result -> Just assigns
-        where
-            Model _ _ assigns _ = result
-
+    Valid (Model _ _ ls _) -> Just ls
     Conflict _ -> Nothing
 
 solveModel :: Eq a => Model a -> Status a
@@ -108,10 +103,12 @@ solveModel model@(Model _ (var:_) _ _) = case modelTrue of
         modelTrue = assignVariable model lTrue
 
 conflictModel :: Eq a => Model a -> Variable a -> Constr a -> Status a
-conflictModel (Model cs ls as tree) (Variable name _) conflict = if inConstr name conflict then modelFalse else Conflict conflict
+conflictModel model (Variable name _) conflict = if inConstr name conflict then modelFalse else Conflict conflict
     where 
+        (Model constrs vars literals tree) = model
         lFalse = Literal name False
-        updateModel = Model (conflict:cs) ls as tree
+        
+        updateModel = Model (conflict:constrs) vars literals tree
         modelFalse = assignVariable updateModel lFalse
 
 assignVariable :: Eq a => Model a -> Literal a -> Status a
@@ -139,8 +136,8 @@ propagateUnitConstr model
     | null unit = model 
     | otherwise = propagateUnitConstr updateModel
     where
-        (Model cs _ _ _) = model
-        unit = filter unitConstr cs
+        (Model constrs _ _ _) = model
+        unit = filter unitConstr constrs
 
         Constr constr impl = head unit
         (Variable name sign) = head constr
@@ -152,14 +149,14 @@ unitConstr :: Constr a -> Bool
 unitConstr (Constr vars _) = length vars == 1
 
 updateVariable :: Eq a => Model a -> Literal a -> [Literal a] -> Model a
-updateVariable (Model vars literals assigns tree) literal impl = updateModel
+updateVariable (Model constrs vars literals tree) literal impl = updateModel
     where
         Literal name _ = literal
-        unsatConstrs = filter (unsatLiteral literal) vars
-        newVars = map (setLiteral literal) unsatConstrs        
-        newLiterals = filter (not . eqVariableName name) literals
-        newAssigns = literal:assigns
+        unsatConstrs = filter (unsatLiteral literal) constrs
+        newConstrs = map (setLiteral literal) unsatConstrs        
+        newVars = filter (not . eqVariableName name) vars
+        newLiterals = literal:literals
         newTree = addLiteral tree literal impl
 
-        updateModel = Model newVars newLiterals newAssigns newTree
+        updateModel = Model newConstrs newVars newLiterals newTree
 
