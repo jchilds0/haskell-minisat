@@ -16,6 +16,10 @@ notVariable (Variable name sign) = Variable name (flipSign sign)
 eqVariableName :: Eq a => a -> Variable a -> Bool 
 eqVariableName n1 (Variable n2 _) = n1 == n2
 
+variableTrue :: a -> Bool -> Variable a
+variableTrue name True = Variable name None
+variableTrue name False = Variable name Not
+
 data Constr a = Constr [Variable a] [Literal a]
     deriving Show
 
@@ -72,8 +76,8 @@ nodeLeaves :: Eq a => AssignNode a -> [Literal a]
 nodeLeaves (Node lit []) = [lit]
 nodeLeaves (Node _ cs) = concatMap nodeLeaves cs
 
-literalLeaves :: Eq a => AssignTree a -> a -> [Literal a]
-literalLeaves (Tree ts) name
+literalLeaves :: Eq a => AssignTree a -> Literal a -> [Literal a]
+literalLeaves (Tree ts) (Literal name _) 
     | null child = []
     | otherwise = nodeLeaves (head child)
     where 
@@ -89,47 +93,51 @@ newModel clauses vars = model
         model = Model constrs vars [] (Tree [])
         constrs = map (\v -> Constr v []) clauses
 
-type SAT = Bool
+data Status a = Valid (Model a) | Conflict (Constr a)
 
 solve :: Eq a => Model a -> Maybe [Literal a]
-solve model = if sat then Just assigns else Nothing
-    where
-        (result, sat) = solveVar model
-        Model _ _ assigns _ = result
-
-solveVar :: Eq a => Model a -> (Model a, SAT)
-solveVar model@(Model _ ls _ _) = case ls of
-    (var:_) -> if sat1 then (modelTrue, sat1) else (modelFalse, sat2)
+solve model = case solveVar model of 
+    Valid solveModel -> Just assigns
         where
-            (Variable name _) = var
+            Model _ _ assigns _ = solveModel
 
-            lTrue = Literal name True
-            (modelTrue, sat1) = assignVariable model lTrue
+    Conflict _ -> Nothing
 
-            lFalse = Literal name False
-            (modelFalse, sat2) = assignVariable model lFalse
+solveVar :: Eq a => Model a -> Status a
+solveVar model@(Model _ [] _ _) = Valid model
+solveVar model@(Model _ (var:_) _ _) = case modelTrue of
+    Valid _ -> modelTrue
+    Conflict _ -> modelFalse
+    where
+        (Variable name _) = var
 
-    [] -> (model, not (constrConflict model))
+        lTrue = Literal name True
+        modelTrue = assignVariable model lTrue
 
-assignVariable :: Eq a => Model a -> Literal a -> (Model a, SAT)
-assignVariable model assign
-  | conflict1 = (updateModel, False)
-  | conflict2 = (propModel, False)
-  | otherwise = (solveModel, sat)
-  where
-      declModel = decisionLiteral model assign
-      updateModel = updateVariable declModel assign
-      conflict1 = constrConflict updateModel
+        lFalse = Literal name False
+        modelFalse = assignVariable model lFalse
 
-      propModel = propagateUnitConstr updateModel
-      conflict2 = constrConflict propModel
+assignVariable :: Eq a => Model a -> Literal a -> Status a
+assignVariable model assign = maybe solveModel Conflict maybeConflict
+    where
+        declModel = decisionLiteral model assign
+        updateModel = updateVariable declModel assign
 
-      (solveModel, sat) = solveVar propModel
+        propModel = propagateUnitConstr updateModel
+        maybeConflict = constrConflict propModel
 
-constrConflict :: Model a -> Bool
-constrConflict (Model constrs _ _ _) = any null vars
+        solveModel = solveVar propModel
+
+constrConflict :: Eq a => Model a -> Maybe (Constr a)
+constrConflict (Model constrs _ _ tree) 
+    | null vars = Nothing
+    | otherwise = Just conflict
     where 
-        vars = map (\(Constr var _) -> var) constrs
+        vars = filter (\(Constr var _) -> null var) constrs
+        Constr _ lits = head vars
+        declLits = concatMap (literalLeaves tree) lits
+        declVars = map (\(Literal name val) -> variableTrue name val) declLits
+        conflict = Constr declVars []
 
 propagateUnitConstr :: Eq a => Model a -> Model a
 propagateUnitConstr model 
