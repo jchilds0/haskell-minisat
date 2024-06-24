@@ -1,6 +1,9 @@
 module Main where
 
 -- Benchmark CNFs from https://www.cs.ubc.ca/~hoos/SATLIB/benchm.html
+-- Extract the benchmarks tar first using
+-- 
+--    tar -xvf benchmarks.tar.gz
 
 import Data.Time.Clock
 import MiniSat.Solver
@@ -28,17 +31,17 @@ testSets = [
         ("uf175-753/", True),
         ("uf200-860/", True), 
         ("uf225-960/", True),
-        ("uf250-1065/", True),
+        ("uf250-1065/", True)
         
-        ("uuf50-218/", False),
-        ("uuf75-325/", False),
-        ("uuf100-430/", False),
-        ("uuf125-538/", False),
-        ("uuf150-645/", False),
-        ("uuf175-753/", False),
-        ("uuf200-860/", False),
-        ("uuf225-960/", False),
-        ("uuf250-1065/", False)
+        -- ("uuf50-218/", False),
+        -- ("uuf75-325/", False),
+        -- ("uuf100-430/", False),
+        -- ("uuf125-538/", False),
+        -- ("uuf150-645/", False),
+        -- ("uuf175-753/", False),
+        -- ("uuf200-860/", False),
+        -- ("uuf225-960/", False),
+        -- ("uuf250-1065/", False)
 
         -- Random + Backbone minimal
         -- ("RTI_k3_n100_m429/", True),
