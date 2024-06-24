@@ -1,5 +1,6 @@
 module MiniSat.Solver (Model(..), Literal(..), Variable(..), Sign(..), solve, notVariable, newModel) where
 import Data.List (nub)
+import Debug.Trace (traceShow)
 
 data Sign = None | Not
     deriving (Show, Eq) 
@@ -20,14 +21,18 @@ eqVariableName n1 (Variable n2 _) = n1 == n2
 data Constr a = Constr [Variable a] [Literal a]
     deriving Show
 
-setLiteral :: Eq a => Literal a -> Constr a -> Constr a
-setLiteral literal (Constr vars lits) = Constr newVars (literal:lits)
+setLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Constr a
+setLiteral literal (Constr vars lits) = Constr newVars newLiterals
     where 
         Literal name _ = literal
         newVars = filter (not . eqVariableName name) vars
+        exists = filter (eqVariableName name) vars
+        newLiterals = if null exists then lits else literal:lits
 
-unsatLiteral :: Eq a => Literal a -> Constr a -> Bool
-unsatLiteral lit (Constr vars _) = not (or literals)
+satLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Bool
+satLiteral lit c@(Constr vars _)
+    | null vars = error $ "missing vars " ++ show lit ++ " " ++ show c
+    | otherwise = or literals-- traceShow(show lit ++ " " ++  show (or literals) ++ " " ++ show c)(or literals)
     where 
         (Literal name _) = lit
         nameVars = filter (eqVariableName name) vars
@@ -80,7 +85,7 @@ newModel clauses vars = model
 maxConflicts :: Int
 maxConflicts = 50
 
-addConflictClauses :: Eq a => Model a -> Model a
+addConflictClauses :: (Show a, Eq a) => Model a -> Model a
 addConflictClauses (Model constrs vars conflicts literals tree) = updateModel
     where
         updateModel = Model constrs vars newConflicts literals tree
@@ -90,20 +95,16 @@ addConflictClauses (Model constrs vars conflicts literals tree) = updateModel
 
 data Status a = Valid (Model a) | Conflict (Constr a)
 
-solve :: Eq a => Model a -> Maybe [Literal a]
-solve model = case maybeConflict of
-    Just _ -> Nothing
-    Nothing -> case propConflict of 
-        Just _ -> Nothing
-        Nothing -> case solveModel propModel of 
-            Valid (Model _ _ _ ls _) -> Just ls
-            Conflict _ -> Nothing
+solve :: (Show a, Eq a) => Model a -> Maybe [Literal a]
+solve model = case propResult of 
+    Conflict _ -> Nothing
+    Valid propModel -> case solveModel propModel of
+        Valid (Model _ _ _ ls _) -> Just ls 
+        Conflict _ -> Nothing
     where 
-        maybeConflict = constrConflict model
-        propModel = propagateUnitConstr model
-        propConflict = constrConflict propModel
+        propResult = propagateUnitConstr model
 
-solveModel :: Eq a => Model a -> Status a
+solveModel :: (Show a, Eq a) => Model a -> Status a
 solveModel model@(Model _ [] _ _ _) = Valid model
 solveModel model@(Model _ (var:_) _ _ _) = case modelTrue of
     Valid _ -> modelTrue
@@ -114,8 +115,8 @@ solveModel model@(Model _ (var:_) _ _ _) = case modelTrue of
         lTrue = Literal name True
         modelTrue = assignVariable model lTrue
 
-conflictModel :: Eq a => Model a -> Variable a -> Constr a -> Status a
-conflictModel model (Variable name _) conflict
+conflictModel :: (Show a, Eq a) => Model a -> Variable a -> Constr a -> Status a
+conflictModel model (Variable name _) conflict 
     | conflictExists = Conflict conflict
     | otherwise = modelFalse
     where 
@@ -128,15 +129,13 @@ conflictModel model (Variable name _) conflict
         updateModel = addConflictClauses model 
         modelFalse = assignVariable updateModel lFalse
 
-assignVariable :: Eq a => Model a -> Literal a -> Status a
-assignVariable model assign = maybe result Conflict maybeConflict
+assignVariable :: (Show a, Eq a) => Model a -> Literal a -> Status a
+assignVariable model assign = case propResult of 
+    Valid propModel -> solveModel propModel 
+    Conflict _ -> propResult
     where
         updateModel = updateVariable model assign []
-        propModel = propagateUnitConstr updateModel
-
-        maybeConflict = constrConflict updateModel
-
-        result = solveModel propModel
+        propResult = propagateUnitConstr updateModel
 
 countOccurences :: (a -> b -> Bool) -> a -> [b] -> Int 
 countOccurences f s = foldr (\item n -> if f s item then n + 1 else n) 0 
@@ -144,25 +143,28 @@ countOccurences f s = foldr (\item n -> if f s item then n + 1 else n) 0
 compName :: Eq a => Variable a -> Variable a -> Bool
 compName (Variable n1 _) (Variable n2 _) = n1 == n2
 
-constrConflict :: Eq a => Model a -> Maybe (Constr a)
+constrConflict :: (Show a, Eq a) => Model a -> Maybe (Constr a)
 constrConflict (Model constrs _ _ _ tree) 
     | length unitVars <= 1 = Nothing
     | null conflictVars = Nothing
+    | not (null emptyConstrs) = error $ "Empty constraint" ++ show emptyConstrs
     | otherwise = Just conflict
     where 
+        emptyConstrs = filter (\(Constr vars _) -> null vars) constrs
+    
         unitConstrs = filter unitConstr constrs
         unitVars = nub (concatMap (\(Constr vars _) -> vars) unitConstrs)
         varCounts = map (\var -> (countOccurences compName var unitVars, var)) unitVars
-        conflictVars = filter ((==2) . fst) varCounts  
+        conflictVars = filter ((==2) . fst) varCounts
 
         (Variable name _) = snd (head conflictVars)
         declLits = concatMap (literalConflict tree) [Literal name True, Literal name False]
         conflict = Constr (map literalNegation declLits) []
 
-propagateUnitConstr :: Eq a => Model a -> Model a
+propagateUnitConstr :: (Show a, Eq a) => Model a -> Status a
 propagateUnitConstr model 
-    | null unit = model 
-    | otherwise = propagateUnitConstr updateModel
+    | null unit = Valid model 
+    | otherwise = maybe propModel Conflict maybeConflict
     where
         (Model constrs _ _ _ _) = model
         unit = filter unitConstr constrs
@@ -171,16 +173,18 @@ propagateUnitConstr model
         (Variable name sign) = head constr
         assign = literalTrue name sign
 
+        maybeConflict = constrConflict model
         updateModel = updateVariable model assign impl
+        propModel = propagateUnitConstr updateModel
 
 unitConstr :: Constr a -> Bool
 unitConstr (Constr vars _) = length vars == 1
 
-updateVariable :: Eq a => Model a -> Literal a -> [Literal a] -> Model a
+updateVariable :: (Show a, Eq a) => Model a -> Literal a -> [Literal a] -> Model a
 updateVariable (Model constrs vars conflicts literals tree) literal impl = updateModel
     where
         Literal name _ = literal
-        unsatConstrs = filter (unsatLiteral literal) constrs
+        unsatConstrs = filter (not . satLiteral literal) constrs
         newConstrs = map (setLiteral literal) unsatConstrs        
         newVars = filter (not . eqVariableName name) vars
         newLiterals = literal:literals
