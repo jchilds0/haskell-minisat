@@ -119,4 +119,6 @@ Benchmark haskell-minisat-bench
     build-depends:
         base >= 4.9, 
         time,
+        directory,
+        pooled-io,
         haskell-minisat
