@@ -17,7 +17,7 @@ dir :: String
 dir = "./benchmarks/"
 
 numTests :: Int
-numTests = 10
+numTests = 50
 
 testSets :: [(String, Bool)]
 testSets = [
@@ -25,23 +25,23 @@ testSets = [
         ("uf20-91/", True), 
         ("uf50-218/", True), 
         ("uf75-325/", True),
-        ("uf100-430/", True), 
-        ("uf125-538/", True),
-        ("uf150-645/", True), 
-        ("uf175-753/", True),
-        ("uf200-860/", True), 
-        ("uf225-960/", True),
-        ("uf250-1065/", True),
+        -- ("uf100-430/", True), 
+        -- ("uf125-538/", True),
+        -- ("uf150-645/", True), 
+        -- ("uf175-753/", True),
+        -- ("uf200-860/", True), 
+        -- ("uf225-960/", True),
+        -- ("uf250-1065/", True),
         
         ("uuf50-218/", False),
-        ("uuf75-325/", False),
-        ("uuf100-430/", False),
-        ("uuf125-538/", False),
-        ("uuf150-645/", False),
-        ("uuf175-753/", False),
-        ("uuf200-860/", False),
-        ("uuf225-960/", False),
-        ("uuf250-1065/", False)
+        ("uuf75-325/", False)
+        -- ("uuf100-430/", False),
+        -- ("uuf125-538/", False),
+        -- ("uuf150-645/", False),
+        -- ("uuf175-753/", False),
+        -- ("uuf200-860/", False),
+        -- ("uuf225-960/", False),
+        -- ("uuf250-1065/", False)
 
         -- Random + Backbone minimal
         -- ("RTI_k3_n100_m429/", True),
