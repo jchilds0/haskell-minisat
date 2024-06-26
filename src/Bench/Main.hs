@@ -11,13 +11,12 @@ import Numeric
 import MiniSat.Parser
 import System.Directory
 import Control.Concurrent.PooledIO.Independent
-import GHC.GHCi.Helpers (flushAll)
 
 dir :: String
 dir = "./benchmarks/"
 
 numTests :: Int
-numTests = 100
+numTests = 10
 
 testSets :: [(String, Bool)]
 testSets = [
@@ -25,7 +24,7 @@ testSets = [
         ("uf20-91/", True),
         ("uf50-218/", True),
         ("uf75-325/", True),
-        ("uf100-430/", True), 
+        -- ("uf100-430/", True), 
         -- ("uf125-538/", True),
         -- ("uf150-645/", True), 
         -- ("uf175-753/", True),

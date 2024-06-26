@@ -14,13 +14,13 @@ data Variable a = Variable a Sign
 notVariable :: Variable a -> Variable a
 notVariable (Variable name sign) = Variable name (flipSign sign)
 
-eqVariableName :: Eq a => a -> Variable a -> Bool 
+eqVariableName :: (Show a, Eq a) => a -> Variable a -> Bool 
 eqVariableName n1 (Variable n2 _) = n1 == n2
 
 data Constr a = Constr [Variable a] [Literal a]
-    deriving Show
+    deriving (Show, Eq)
 
-setLiteral :: Eq a => Literal a -> Constr a -> Constr a
+setLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Constr a
 setLiteral literal (Constr vars lits) = Constr newVars newLiterals
     where 
         Literal name _ = literal
@@ -28,7 +28,7 @@ setLiteral literal (Constr vars lits) = Constr newVars newLiterals
         exists = filter (eqVariableName name) vars
         newLiterals = if null exists then lits else literal:lits
 
-satLiteral :: Eq a => Literal a -> Constr a -> Bool
+satLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Bool
 satLiteral lit (Constr vars _) = or literals
     where 
         (Literal name _) = lit
@@ -50,132 +50,141 @@ literalNegation :: Literal a -> Variable a
 literalNegation (Literal name False) = Variable name None
 literalNegation (Literal name True) = Variable name Not
 
-data AssignNode a = Node (Literal a) [AssignNode a]
+data AssignNode a = Node (Literal a) [Literal a]
     deriving Show
 
 newtype AssignTree a = Tree [AssignNode a]
     deriving Show
 
-addLiteral :: Eq a => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
+addLiteral :: (Show a, Eq a) => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
 addLiteral (Tree ts) lit impl = Tree (newNode:ts)
     where 
         implNodes = filter (\(Node t _) -> t `elem` impl) ts
-        newNode = Node lit implNodes
+        implLits = nub (concatMap (\(Node _ l) -> l) implNodes)
+        newNode = if null implLits then Node lit [lit] else Node lit implLits 
 
-literalConflict :: Eq a => AssignTree a -> Literal a -> [Literal a]
+literalConflict :: (Show a, Eq a) => AssignTree a -> Literal a -> [Literal a]
 literalConflict (Tree ts) (Literal name _) 
     | null literalNodes = []
-    | otherwise = nub literals
+    | otherwise = literals
     where 
         literalNodes = filter (\(Node (Literal n _) _) -> name == n) ts
-        literals = map (\(Node l _) -> l) literalNodes
+        (Node _ literals) = head literalNodes
 
-data Model a = Model [Constr a] [Variable a] [Constr a] [Literal a] (AssignTree a)
+data Model a = Model [Constr a] [Variable a] [Literal a] (AssignTree a)
     deriving Show
 
-newModel :: Eq a => [[Variable a]] -> [Variable a] -> Model a
+newModel :: (Show a, Eq a) => [[Variable a]] -> [Variable a] -> Model a
 newModel clauses vars = model
     where 
-        model = Model constrs vars [] [] (Tree [])
+        model = Model constrs vars [] (Tree [])
         constrs = map (\v -> Constr v []) clauses
 
 maxConflicts :: Int
-maxConflicts = 100
+maxConflicts = 10
 
-addConflictClauses :: Eq a => Model a -> Model a
-addConflictClauses (Model constrs vars conflicts literals tree) = updateModel
-    where
-        updateModel = Model (newConstrs ++ constrs) vars newConflicts literals tree
-
-        newConflicts = conflicts
-        newConstrs = map (\conflict -> foldr setLiteral conflict literals) newConflicts
-
-data Status a = Valid (Model a) | Conflict (Constr a)
-
-solve :: Eq a => Model a -> Maybe [Literal a]
-solve model = case solveModel propResult of
-        Valid (Model _ _ _ ls _) -> Just ls 
-        Conflict _ -> Nothing
+conflictsToClauses :: (Show a, Eq a) => Model a -> [Constr a] -> Model a 
+conflictsToClauses (Model constrs vars literals tree) learnt = updateModel
     where 
-        propResult = propagateUnits model
+        updateModel = Model (clauses ++ constrs) vars literals tree
+        clauses = map (\c -> foldr setLiteral c literals) learnt
 
-assignLiteral :: Eq a => Model a -> Literal a -> Status a
-assignLiteral model literal = solveModel (setVariable model literal [])
+data Status a = Valid (Model a) | Conflict (Constr a) [Constr a]
+data Assign a = Update (Model a) | Clause (Constr a)
 
-solveModel :: Eq a => Status a -> Status a
-solveModel (Conflict conflict) = Conflict conflict
-solveModel (Valid model) 
+solve :: (Show a, Eq a) => Model a -> Maybe [Literal a]
+solve model = case solveModel model of
+    Valid (Model _ _ ls _) -> Just ls 
+    Conflict _ _ -> Nothing
+
+solveModel :: (Show a, Eq a) => Model a -> Status a
+solveModel model = case propagateUnits model of
+    Update propModel -> decideLiteral propModel 
+    Clause conflict -> Conflict conflict [conflict]
+
+decideLiteral :: (Show a, Eq a) => Model a -> Status a
+decideLiteral model 
     | null vars = Valid model
-    | otherwise = case assignLiteral model lTrue of
-        Valid modelTrue -> Valid modelTrue
-        Conflict conflict -> handleConflict model var conflict
-    where
-        (Model _ vars _ _ _) = model
-        var = head vars
-        (Variable name _) = var
-        lTrue = Literal name True
-
-handleConflict :: Eq a => Model a -> Variable a -> Constr a -> Status a
-handleConflict model (Variable name _) conflict 
-    | conflictExists = Conflict conflict
-    | otherwise = assignLiteral updateModel lFalse
+    | otherwise = case solveModel modelTrue of 
+        Valid updateModel -> Valid updateModel
+        Conflict conflict learnt -> analyzeConflict model conflict learnt
     where 
-        (Model _ _ _ literals _) = model
+        (Model _ vars _ _) = model
+        (Variable name _) = head vars
 
+        lTrue = Literal name True
+        modelTrue = assignLiteral model lTrue []
+
+analyzeConflict :: (Show a, Eq a) => Model a -> Constr a -> [Constr a] -> Status a
+analyzeConflict model conflict learnt 
+    | conflictExists = Conflict conflict learnt
+    | otherwise = case solveModel updateModel of
+        Valid model2 -> Valid model2
+        Conflict conflict2 newLearnt -> Conflict conflict2 (newLearnt ++ learnt)
+    where 
+        (Model _ _ literals _) = model
         (Constr vars _) = foldr setLiteral conflict literals
-        conflictExists = not (null vars)
-        
-        lFalse = Literal name False
-        updateModel = addConflictClauses model 
+        conflictExists = null vars
+        updateModel = conflictsToClauses model learnt
+
+conflictConstr :: (Show a, Eq a) => Model a -> Maybe (Constr a)
+conflictConstr (Model constrs _ _ tree)
+    | null conflictVars = Nothing
+    | otherwise = Just conflict 
+    where 
+        unitConstrs = filter unitConstr constrs
+        unitVars = nub (map (\(Constr vs _) -> head vs) unitConstrs)
+        conflictVars = filter (\v -> countOccurences compName v unitVars == 2) unitVars
+
+        (Variable name _) = head conflictVars
+        conflictConstrs = filter (constrUnitVariable name) unitConstrs
+        conflictLiterals = concatMap (\(Constr _ lit) -> lit) conflictConstrs
+        literals = nub (concatMap (literalConflict tree) conflictLiterals)
+        conflict = Constr (map literalNegation literals) []
 
 countOccurences :: (a -> b -> Bool) -> a -> [b] -> Int 
 countOccurences f s = foldr (\item n -> if f s item then n + 1 else n) 0 
 
-compName :: Eq a => Variable a -> Variable a -> Bool
+constrUnitVariable :: Eq a => a -> Constr a -> Bool
+constrUnitVariable n1 (Constr vars _) 
+    | null vars = False
+    | otherwise = n1 == n2
+    where 
+        Variable n2 _ = head vars
+
+compName :: (Show a, Eq a) => Variable a -> Variable a -> Bool
 compName (Variable n1 _) (Variable n2 _) = n1 == n2
 
-constrConflict :: Eq a => Model a -> Maybe (Constr a)
-constrConflict (Model constrs _ _ _ tree) 
-    | length unitVars <= 1 = Nothing
-    | null conflictVars = Nothing
-    | otherwise = Just conflict
-    where 
-        unitConstrs = filter unitConstr constrs
-        unitVars = nub (concatMap (\(Constr vars _) -> vars) unitConstrs)
-        varCounts = map (\var -> (countOccurences compName var unitVars, var)) unitVars
-        conflictVars = filter ((==2) . fst) varCounts
-
-        (Variable name _) = snd (head conflictVars)
-        declLits = concatMap (literalConflict tree) [Literal name True, Literal name False]
-        conflict = Constr (map literalNegation declLits) []
-
-propagateUnits :: Eq a => Model a -> Status a
+propagateUnits :: (Show a, Eq a) => Model a -> Assign a
 propagateUnits model 
-    | null unit = Valid model 
-    | otherwise = maybe propModel Conflict maybeConflict
+    | null unit = Update model
+    | otherwise = case maybeConflict of 
+        Just conflict -> Clause conflict
+        Nothing -> propagateUnits updateModel
     where
-        (Model constrs _ _ _ _) = model
+        Model constrs _ _ _ = model
         unit = filter unitConstr constrs
 
         Constr constr impl = head unit
         (Variable name sign) = head constr
         assign = literalTrue name sign
 
-        maybeConflict = constrConflict model
-        propModel = setVariable model assign impl
+        maybeConflict = conflictConstr model
+        updateModel = assignLiteral model assign impl
 
 unitConstr :: Constr a -> Bool
 unitConstr (Constr vars _) = length vars == 1
 
-setVariable :: Eq a => Model a -> Literal a -> [Literal a] -> Status a
-setVariable (Model constrs vars conflicts literals tree) var impl = propagateUnits updateModel
+assignLiteral :: (Show a, Eq a) => Model a -> Literal a -> [Literal a] -> Model a
+assignLiteral (Model constrs vars literals tree) var impl = updateModel
     where
         Literal name _ = var
         unsatConstrs = filter (not . satLiteral var) constrs
         newConstrs = map (setLiteral var) unsatConstrs        
+
         newVars = filter (not . eqVariableName name) vars
         newLiterals = var:literals
-        newTree = addLiteral tree var impl
+        newTree =  addLiteral tree var impl
 
-        updateModel = Model newConstrs newVars conflicts newLiterals newTree
+        updateModel = Model newConstrs newVars newLiterals newTree
 
