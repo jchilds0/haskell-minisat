@@ -64,7 +64,7 @@ library
         MiniSat.Parser
 
     -- Modules included in this library but not exported.
-    other-modules: 
+    -- other-modules:    Tests.LargeSat
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -93,7 +93,7 @@ test-suite haskell-minisat-test
     default-language: Haskell2010
 
     -- Modules included in this executable, other than Main.
-    -- other-modules:
+    other-modules:    LargeSat, LargeUnSat
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

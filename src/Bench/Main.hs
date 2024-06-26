@@ -17,15 +17,15 @@ dir :: String
 dir = "./benchmarks/"
 
 numTests :: Int
-numTests = 50
+numTests = 100
 
 testSets :: [(String, Bool)]
 testSets = [
         -- Uniform Random
-        ("uf20-91/", True), 
-        ("uf50-218/", True), 
+        ("uf20-91/", True),
+        ("uf50-218/", True),
         ("uf75-325/", True),
-        -- ("uf100-430/", True), 
+        ("uf100-430/", True), 
         -- ("uf125-538/", True),
         -- ("uf150-645/", True), 
         -- ("uf175-753/", True),
@@ -34,8 +34,8 @@ testSets = [
         -- ("uf250-1065/", True),
         
         ("uuf50-218/", False),
-        ("uuf75-325/", False)
-        -- ("uuf100-430/", False),
+        ("uuf75-325/", False),
+        ("uuf100-430/", False)
         -- ("uuf125-538/", False),
         -- ("uuf150-645/", False),
         -- ("uuf175-753/", False),
