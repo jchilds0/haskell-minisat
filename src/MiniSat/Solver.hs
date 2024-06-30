@@ -1,4 +1,4 @@
-module MiniSat.Solver (Model(..), Literal(..), Variable(..), Sign(..), solve, notVariable, newModel) where
+module MiniSat.Solver (Model(..), Literal(..), Variable(..), Sign(..), solve, setLiteral, notVariable, newModel) where
 import Data.List (nub)
 
 data Sign = None | Not
@@ -8,33 +8,19 @@ flipSign :: Sign -> Sign
 flipSign None = Not
 flipSign Not = None
 
+-- | An unbound variable in a clause, with sign Sign. 
+--   Variables are identified using the label of type a, 
+--   which should be an instance of Eq. 
 data Variable a = Variable a Sign
     deriving (Show, Eq)
 
 notVariable :: Variable a -> Variable a
 notVariable (Variable name sign) = Variable name (flipSign sign)
 
-eqVariableName :: (Show a, Eq a) => a -> Variable a -> Bool 
+eqVariableName :: Eq a => a -> Variable a -> Bool 
 eqVariableName n1 (Variable n2 _) = n1 == n2
 
-data Constr a = Constr [Variable a] [Literal a]
-    deriving (Show, Eq)
-
-setLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Constr a
-setLiteral literal (Constr vars lits) = Constr newVars newLiterals
-    where 
-        Literal name _ = literal
-        newVars = filter (not . eqVariableName name) vars
-        exists = filter (eqVariableName name) vars
-        newLiterals = if null exists then lits else literal:lits
-
-satLiteral :: (Show a, Eq a) => Literal a -> Constr a -> Bool
-satLiteral lit (Constr vars _) = or literals
-    where 
-        (Literal name _) = lit
-        nameVars = filter (eqVariableName name) vars
-        literals = map (variableSat lit) nameVars
-
+-- | A literal is the assignment of an identifier to True or False
 data Literal a = Literal a Bool
     deriving (Eq, Show, Ord)
 
@@ -50,20 +36,72 @@ literalNegation :: Literal a -> Variable a
 literalNegation (Literal name False) = Variable name None
 literalNegation (Literal name True) = Variable name Not
 
+-- | A clause of an expression in CNF. [Variable a]
+--   is a list of unbound variables in the clause, 
+--   and [Literal a] is a list of the assigned variables. 
+--   
+--   When a variable is decided to be True or False, if 
+--   the clause is satisfied, the clause is removed from 
+--   the expression, otherwise the variable is removed 
+--   from the variable list and the assignment is added
+--   to the literal list.
+--
+--      Constr [Variable "x1" None, Variable "x2" Not, Variable "x3" Not] [] 
+--
+--   represents the clause 
+--    
+--      x1 or (not x2) or (not x3)
+--
+data Constr a = Constr [Variable a] [Literal a]
+    deriving (Show, Eq)
+
+updateConstrLiteral :: Eq a => Literal a -> Constr a -> Constr a
+updateConstrLiteral literal (Constr vars literals) = Constr newVars newLiterals
+    where 
+        Literal name _ = literal
+        newVars = filter (not . eqVariableName name) vars
+        exists = filter (eqVariableName name) vars
+        newLiterals = if null exists then literals else literal:literals
+
+satLiteral :: Eq a => Literal a -> Constr a -> Bool
+satLiteral lit (Constr vars _) = or literals
+    where 
+        (Literal name _) = lit
+        nameVars = filter (eqVariableName name) vars
+        literals = map (variableSat lit) nameVars
+
+-- | AssignNode stores the literals which caused a literal 
+--   to become unit in the expression. 
+--
+--   If we have the clause 
+--
+--      x1 or (not x2) or x3
+--   
+--   and we decide x2 is True, and x3 is False.
+--   To satisfy the clause we must have x1 is True, so we 
+--   get the assign node 
+--
+--      Node (Literal "x1" True) [Literal "x2" True, Literal "x3" False]
+--   
+--   This is used to construct learnt clauses.
+--
 data AssignNode a = Node (Literal a) [Literal a]
     deriving Show
 
+-- | AssignTree stores an assign node for each assigned literal.
 newtype AssignTree a = Tree [AssignNode a]
     deriving Show
 
-addLiteral :: (Show a, Eq a) => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
+addLiteral :: Eq a => AssignTree a -> Literal a -> [Literal a] -> AssignTree a
 addLiteral (Tree ts) lit impl = Tree (newNode:ts)
     where 
         implNodes = filter (\(Node t _) -> t `elem` impl) ts
         implLits = nub (concatMap (\(Node _ l) -> l) implNodes)
         newNode = if null implLits then Node lit [lit] else Node lit implLits 
 
-literalConflict :: (Show a, Eq a) => AssignTree a -> Literal a -> [Literal a]
+-- | literalConflict constructs a conflict clauses using the assign tree for 
+--   a given literal. Returns a list of literals which caused the assignment. 
+literalConflict :: Eq a => AssignTree a -> Literal a -> [Literal a]
 literalConflict (Tree ts) (Literal name _) 
     | null literalNodes = []
     | otherwise = literals
@@ -71,10 +109,15 @@ literalConflict (Tree ts) (Literal name _)
         literalNodes = filter (\(Node (Literal n _) _) -> name == n) ts
         (Node _ literals) = head literalNodes
 
+-- | Model stores the state of the solver. 
+--
+--      Model constrs vars literals tree 
+--   
+--   has a list of clauses 'constrs' which store 
 data Model a = Model [Constr a] [Variable a] [Literal a] (AssignTree a)
     deriving Show
 
-newModel :: (Show a, Eq a) => [[Variable a]] -> [Variable a] -> Model a
+newModel :: Eq a => [[Variable a]] -> [Variable a] -> Model a
 newModel clauses vars = model
     where 
         model = Model constrs vars [] (Tree [])
@@ -83,26 +126,59 @@ newModel clauses vars = model
 maxConflicts :: Int
 maxConflicts = 10
 
-conflictsToClauses :: (Show a, Eq a) => Model a -> [Constr a] -> Model a 
+-- | Add learnt clauses to the model
+conflictsToClauses :: Eq a => Model a -> [Constr a] -> Model a 
 conflictsToClauses (Model constrs vars literals tree) learnt = updateModel
     where 
         updateModel = Model (clauses ++ constrs) vars literals tree
-        clauses = map (\c -> foldr setLiteral c literals) learnt
+        clauses = map (\c -> foldr updateConstrLiteral c literals) learnt
 
+-- | Status is the result of trying to find a solution to the model. 
+--   Either the model is valid or a conflict occurs. 
 data Status a = Valid (Model a) | Conflict (Constr a) [Constr a]
+
+-- | Result of propagating unit constraints, either the model is 
+--   valid or a conflict occurs.
 data Assign a = Update (Model a) | Clause (Constr a)
 
-solve :: (Show a, Eq a) => Model a -> Maybe [Literal a]
-solve model = case solveModel model of
-    Valid (Model _ _ ls _) -> Just ls 
+solve :: Eq a => Model a -> Maybe [Literal a]
+solve model = case simplifyModel model of 
+    Valid updateModel -> case solveModel updateModel of
+        Valid (Model _ _ ls _) -> Just ls 
+        Conflict _ _ -> Nothing
     Conflict _ _ -> Nothing
 
-solveModel :: (Show a, Eq a) => Model a -> Status a
+setLiteral :: Eq a => Model a -> Literal a -> Maybe (Model a)
+setLiteral model literal = case propagateUnits assignModel of 
+    Update propModel -> Just propModel
+    Clause _ -> Nothing
+    where 
+        assignModel = assignLiteral model literal []
+
+simplifyModel :: Eq a => Model a -> Status a
+simplifyModel model = Valid model
+
+-- | solveModel is an iteration of the solver. Firstly
+--   propagate any unit constraints, 
+--
+--    If a conflict is found, return the conflict
+--
+--    If no conflicts, decide a new literal
+--
+solveModel :: Eq a => Model a -> Status a
 solveModel model = case propagateUnits model of
     Update propModel -> decideLiteral propModel 
     Clause conflict -> Conflict conflict [conflict]
 
-decideLiteral :: (Show a, Eq a) => Model a -> Status a
+-- | Assign the first unbound variable in the model 
+--   to true and attempt to solve the resulting model. 
+--
+--    If a conflict occurs, analyze the conflict to either 
+--    continue the search or return the conflict 
+--
+--    If no conflict occurs, return the valid model.
+--
+decideLiteral :: Eq a => Model a -> Status a
 decideLiteral model 
     | null vars = Valid model
     | otherwise = case solveModel modelTrue of 
@@ -115,7 +191,10 @@ decideLiteral model
         lTrue = Literal name True
         modelTrue = assignLiteral model lTrue []
 
-analyzeConflict :: (Show a, Eq a) => Model a -> Constr a -> [Constr a] -> Status a
+-- | analyzeConflict checks if the constraint 'conflict' has an unbound variable 
+--   under 'model'. If not, the conflict is returned, otherwise the conflict and 
+--   learnt are added to the model and search resumes.
+analyzeConflict :: Eq a => Model a -> Constr a -> [Constr a] -> Status a
 analyzeConflict model conflict learnt 
     | conflictExists = Conflict conflict learnt
     | otherwise = case solveModel updateModel of
@@ -123,11 +202,15 @@ analyzeConflict model conflict learnt
         Conflict conflict2 newLearnt -> Conflict conflict2 (newLearnt ++ learnt)
     where 
         (Model _ _ literals _) = model
-        (Constr vars _) = foldr setLiteral conflict literals
+        (Constr vars _) = foldr updateConstrLiteral conflict literals
         conflictExists = null vars
         updateModel = conflictsToClauses model learnt
 
-conflictConstr :: (Show a, Eq a) => Model a -> Maybe (Constr a)
+-- | conflictConstr returns Nothing if the model has no conflicts, and 
+--   Just constr if there is a conflict, where constr is the learnt clause.
+--
+--   A conflict exists if x and not x appear in unit clauses.
+conflictConstr :: Eq a => Model a -> Maybe (Constr a)
 conflictConstr (Model constrs _ _ tree)
     | null conflictVars = Nothing
     | otherwise = Just conflict 
@@ -152,10 +235,10 @@ constrUnitVariable n1 (Constr vars _)
     where 
         Variable n2 _ = head vars
 
-compName :: (Show a, Eq a) => Variable a -> Variable a -> Bool
+compName :: Eq a => Variable a -> Variable a -> Bool
 compName (Variable n1 _) (Variable n2 _) = n1 == n2
 
-propagateUnits :: (Show a, Eq a) => Model a -> Assign a
+propagateUnits :: Eq a => Model a -> Assign a
 propagateUnits model 
     | null unit = Update model
     | otherwise = case maybeConflict of 
@@ -175,12 +258,12 @@ propagateUnits model
 unitConstr :: Constr a -> Bool
 unitConstr (Constr vars _) = length vars == 1
 
-assignLiteral :: (Show a, Eq a) => Model a -> Literal a -> [Literal a] -> Model a
+assignLiteral :: Eq a => Model a -> Literal a -> [Literal a] -> Model a
 assignLiteral (Model constrs vars literals tree) var impl = updateModel
     where
         Literal name _ = var
         unsatConstrs = filter (not . satLiteral var) constrs
-        newConstrs = map (setLiteral var) unsatConstrs        
+        newConstrs = map (updateConstrLiteral var) unsatConstrs        
 
         newVars = filter (not . eqVariableName name) vars
         newLiterals = var:literals
