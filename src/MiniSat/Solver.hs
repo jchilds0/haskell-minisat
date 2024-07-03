@@ -24,9 +24,9 @@ eqVariableName n1 (Variable n2 _) = n1 == n2
 data Literal a = Literal a Bool
     deriving (Eq, Show, Ord)
 
-literalTrue :: a -> Sign -> Literal a
-literalTrue name None = Literal name True
-literalTrue name Not = Literal name False 
+literalTrue :: Variable a -> Literal a
+literalTrue (Variable name None) = Literal name True
+literalTrue (Variable name Not) = Literal name False 
 
 variableSat :: Literal a -> Variable a -> Bool
 variableSat (Literal _ val) (Variable _ None) = val
@@ -155,8 +155,26 @@ setLiteral model literal = case propagateUnits assignModel of
     where 
         assignModel = assignLiteral model literal []
 
+-- | simplifyModel assigns all variables which only occur with one 
+--   sign to the literal which makes them true. 
 simplifyModel :: Eq a => Model a -> Status a
-simplifyModel model = Valid model
+simplifyModel model 
+    | null conflicts = Valid model
+    | otherwise = Conflict (head conflicts) [] 
+    where 
+        Model constrs _ _ _ = model
+
+        updateModel = foldr (\l m -> assignLiteral m l []) model singleLiterals
+        Model newConstrs _ _ _ = updateModel
+
+        conflicts = filter (\(Constr vars _) -> null vars) newConstrs
+
+        constrVars = nub (concatMap (\(Constr vs _) -> vs) constrs)
+        singleVars = filter (singleSign constrVars) constrVars
+        singleLiterals = map literalTrue singleVars
+
+singleSign :: Eq a => [Variable a] -> Variable a -> Bool
+singleSign vars (Variable name _) = length (filter (\(Variable n1 _) -> n1 == name) vars) == 1
 
 -- | solveModel is an iteration of the solver. Firstly
 --   propagate any unit constraints, 
@@ -167,7 +185,7 @@ simplifyModel model = Valid model
 --
 solveModel :: Eq a => Model a -> Status a
 solveModel model = case propagateUnits model of
-    Update propModel -> decideLiteral propModel 
+    Update propModel -> decideNextLiteral propModel 
     Clause conflict -> Conflict conflict [conflict]
 
 -- | Assign the first unbound variable in the model 
@@ -178,8 +196,8 @@ solveModel model = case propagateUnits model of
 --
 --    If no conflict occurs, return the valid model.
 --
-decideLiteral :: Eq a => Model a -> Status a
-decideLiteral model 
+decideNextLiteral :: Eq a => Model a -> Status a
+decideNextLiteral model 
     | null vars = Valid model
     | otherwise = case solveModel modelTrue of 
         Valid updateModel -> Valid updateModel
@@ -249,8 +267,7 @@ propagateUnits model
         unit = filter unitConstr constrs
 
         Constr constr impl = head unit
-        (Variable name sign) = head constr
-        assign = literalTrue name sign
+        assign = literalTrue (head constr)
 
         maybeConflict = conflictConstr model
         updateModel = assignLiteral model assign impl
